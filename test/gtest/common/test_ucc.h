@@ -6,6 +6,8 @@
 #ifndef TEST_UCC_H
 #define TEST_UCC_H
 #include "test.h"
+#include "ucc/api/ucc.h"
+#include "core/ucc_mc.h"
 #include <vector>
 #include <tuple>
 #include <memory>
@@ -14,6 +16,8 @@ typedef std::vector<ucc_coll_args_t*> UccCollArgsVec;
 
 class UccCollArgs {
 protected: 
+    ucc_memory_type_t mem_type;
+
     void alltoallx_init_buf(int src_rank, int dst_rank, uint8_t *buf, size_t len)
     {
         for (int i = 0; i < len; i++) {
@@ -52,7 +56,8 @@ public:
         .thread_mode = UCC_THREAD_SINGLE,
         .coll_types = UCC_COLL_TYPE_BARRIER |
                       UCC_COLL_TYPE_ALLTOALL |
-                      UCC_COLL_TYPE_ALLTOALLV
+                      UCC_COLL_TYPE_ALLTOALLV |
+                      UCC_COLL_TYPE_ALLREDUCE
     };
     static constexpr ucc_context_params_t default_ctx_params = {
         .mask = UCC_CONTEXT_PARAM_FIELD_TYPE,
@@ -114,7 +119,7 @@ typedef std::vector<ucc_env_var_t> ucc_job_env_t;
    Multiple UccTeams can be created from UccJob */
 class UccJob {
     static const int staticUccJobSize = 16;
-    static constexpr int staticTeamSizes[] = {2, 7, 8};
+    static constexpr int staticTeamSizes[] = {7,8};//{2, 7, 8};
     static UccJob* staticUccJob;
     static std::vector<UccTeam_h> staticTeams;
 public:

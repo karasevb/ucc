@@ -10,19 +10,18 @@ extern "C" {
 #include "utils/ucc_math.h"
 
 using Param_0 = std::tuple<int, int, int>;
-using Param_1 = std::tuple<int, int>;
 
-class test_alltoall : public UccCollArgs, public ucc::test
+class test_allgather : public UccCollArgs, public ucc::test
 {
 public:
     UccCollArgsVec data_init(int nprocs, ucc_datatype_t dtype,
                                      size_t count) {
         UccCollArgsVec args(nprocs);
-        for (auto i = 0; i < nprocs; i++) {
+        for (auto r = 0; r < nprocs; r++) {
             ucc_coll_args_t *coll = (ucc_coll_args_t*)
                     calloc(1, sizeof(ucc_coll_args_t));
             coll->mask = 0;
-            coll->coll_type = UCC_COLL_TYPE_ALLTOALL;
+            coll->coll_type = UCC_COLL_TYPE_ALLGATHER;
             coll->src.info.mem_type = UCC_MEMORY_TYPE_HOST;
             coll->src.info.count   = (ucc_count_t)count;
             coll->src.info.datatype = dtype;
@@ -31,18 +30,16 @@ public:
             coll->dst.info.datatype = dtype;
 
             UCC_CHECK(ucc_mc_alloc(&coll->src.info.buffer,
-                      ucc_dt_size(dtype) * count * nprocs,
+                      ucc_dt_size(dtype) * count,
                       UCC_MEMORY_TYPE_HOST));
             UCC_CHECK(ucc_mc_alloc(&coll->dst.info.buffer,
                       ucc_dt_size(dtype) * count * nprocs,
                       UCC_MEMORY_TYPE_HOST));
-
-            for (int r = 0; r < nprocs; r++) {
-                size_t rank_size = ucc_dt_size(dtype) * count;
-                alltoallx_init_buf(r, i, (uint8_t*)coll->src.info.buffer +
-                              r * rank_size, rank_size);
+            for (int i = 0; i < ucc_dt_size(dtype) * count; i++) {
+                uint8_t *sbuf = (uint8_t*)coll->src.info.buffer;
+                sbuf[i] = r;
             }
-            args[i] = coll;
+            args[r] = coll;
         }
         return args;
     }
@@ -57,26 +54,25 @@ public:
         }
         args.clear();
     }
-    void data_validate(UccCollArgsVec args)
-    {
-        for (int r = 0; r < args.size(); r++) {
-            ucc_coll_args_t* coll = args[r];
-            for (int i = 0; i < args.size(); i++) {
-                size_t rank_size = ucc_dt_size(coll->dst.info.datatype) *
-                        (size_t)coll->dst.info.count;
-                EXPECT_EQ(0,
-                          alltoallx_validate_buf(i, r,
-                          (uint8_t*)coll->dst.info.buffer + rank_size * i,
-                          rank_size));
+    void data_validate(UccCollArgsVec args) {
+        for (int i = 0; i < args.size(); i++) {
+            ucc_coll_args_t* coll = args[i];
+            uint8_t *rbuf = (uint8_t*)coll->dst.info.buffer;
+            for (int r = 0; r < args.size(); r++) {
+                size_t rank_size = ucc_dt_size((args[r])->src.info.datatype) *
+                        (args[r])->src.info.count;
+                for (int i = 0; i < rank_size; i++) {
+                    EXPECT_EQ(r, rbuf[r*rank_size + i]);
+                }
             }
         }
     }
 };
 
-class test_alltoall_0 : public test_alltoall,
+class test_allgather_0 : public test_allgather,
         public ::testing::WithParamInterface<Param_0> {};
 
-UCC_TEST_P(test_alltoall_0, single)
+UCC_TEST_P(test_allgather_0, single)
 {
     const int size = std::get<0>(GetParam());
     const ucc_datatype_t dtype = (ucc_datatype_t)std::get<1>(GetParam());
@@ -93,40 +89,8 @@ UCC_TEST_P(test_alltoall_0, single)
 
 INSTANTIATE_TEST_CASE_P(
     ,
-    test_alltoall_0,
+    test_allgather_0,
     ::testing::Combine(
         ::testing::Values(1,3,16), // nprocs
-        ::testing::Range((int)UCC_DT_INT8, (int)UCC_DT_FLOAT64 + 1), // dtype
-        ::testing::Values(1,3,8))); // count
-
-class test_alltoall_1 : public test_alltoall,
-        public ::testing::WithParamInterface<Param_1> {};
-
-UCC_TEST_P(test_alltoall_1, multiple)
-{
-    const ucc_datatype_t dtype = (ucc_datatype_t)std::get<0>(GetParam());
-    const int count = std::get<1>(GetParam());
-
-    std::vector<UccReq> reqs;
-    std::vector<UccCollArgsVec> args;
-    for (auto &team : UccJob::getStaticTeams()) {
-        UccCollArgsVec arg = data_init(team->procs.size(),
-                                       dtype, count);
-        args.push_back(arg);
-        reqs.push_back(UccReq(team, arg));
-    }
-    UccReq::startall(reqs);
-    UccReq::waitall(reqs);
-
-    for (auto arg : args) {
-        data_validate(arg);
-        data_fini(arg);
-    }
-}
-
-INSTANTIATE_TEST_CASE_P(
-    ,
-    test_alltoall_1,
-    ::testing::Combine(
         ::testing::Range((int)UCC_DT_INT8, (int)UCC_DT_FLOAT64 + 1), // dtype
         ::testing::Values(1,3,8))); // count

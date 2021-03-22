@@ -100,8 +100,7 @@ ucc_status_t UccTeam::req_test(void *request)
     switch (ci->self->ag[ci->my_rank].phase) {
     case UccTeam::AG_READY:
         for (int i = 0; i < n_procs; i++) {
-            if ((ci->self->ag[i].phase == UccTeam::AG_INIT) ||
-                (ci->self->ag[i].phase == UccTeam::AG_COMPLETE)) {
+            if (ci->self->ag[i].phase == UccTeam::AG_INIT) {
                 return UCC_INPROGRESS;
             }
         }
@@ -318,6 +317,12 @@ UccReq::UccReq(UccTeam_h _team, UccCollArgsVec args) :
     EXPECT_EQ(team->procs.size(), args.size());
     ucc_coll_req_h req;
     for (auto i = 0; i < team->procs.size(); i++) {
+        ucc_coll_args_t *coll = args[i];
+        printf("%d: ", i);
+        for (int c = 0; c < coll->src.info.count; c++) {
+            printf("%d ", ((int *)(coll->src.info.buffer))[c]);
+        }
+        printf("\n");
         EXPECT_EQ(UCC_OK, ucc_collective_init(args[i], &req, team->procs[i].team));
         reqs.push_back(req);
     }

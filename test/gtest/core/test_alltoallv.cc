@@ -3,6 +3,9 @@
  * See file LICENSE for terms.
  */
 
+extern "C" {
+#include <core/ucc_mc.h>
+}
 #include "common/test_ucc.h"
 #include "utils/ucc_math.h"
 
@@ -47,7 +50,9 @@ public:
                 buf_count += rank_count;
             }
 
-            coll->src.info_v.buffer = malloc(buf_count * ucc_dt_size(dtype));
+            UCC_CHECK(ucc_mc_alloc(&coll->src.info_v.buffer,
+                                   buf_count * ucc_dt_size(dtype),
+                                   UCC_MEMORY_TYPE_HOST));
             for (int i = 0; i < nprocs; i++) {
                 alltoallx_init_buf(r, i, (uint8_t*)coll->src.info_v.buffer +
                                ((T*)coll->src.info_v.displacements)[i] * ucc_dt_size(dtype),
@@ -60,7 +65,9 @@ public:
                 ((T*)coll->dst.info_v.displacements)[i] = buf_count;
                 buf_count += rank_count;
             }
-            coll->dst.info_v.buffer = malloc(buf_count * ucc_dt_size(dtype));
+            UCC_CHECK(ucc_mc_alloc(&coll->dst.info_v.buffer,
+                                   buf_count * ucc_dt_size(dtype),
+                                   UCC_MEMORY_TYPE_HOST));
             args[r] = coll;
         }
         return args;
@@ -84,10 +91,13 @@ public:
     void data_fini(UccCollArgsVec args)
     {
         for (ucc_coll_args_t* coll : args) {
-            free(coll->src.info_v.buffer);
+            ucc_memory_type_t mtype;
+            UCC_CHECK(ucc_mc_type(coll->src.info_v.buffer, &mtype));
+            UCC_CHECK(ucc_mc_free(coll->src.info_v.buffer, mtype));
             free(coll->src.info_v.counts);
             free(coll->src.info_v.displacements);
-            free(coll->dst.info_v.buffer);
+            UCC_CHECK(ucc_mc_type(coll->dst.info_v.buffer, &mtype));
+            UCC_CHECK(ucc_mc_free(coll->dst.info_v.buffer, mtype));
             free(coll->dst.info_v.counts);
             free(coll->dst.info_v.displacements);
             free(coll);
